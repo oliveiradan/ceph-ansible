@@ -16,3 +16,4 @@ ceph_conf_overrides:
   global:
     osd_pool_default_pg_num: 8
     osd_pool_default_size: 1
+mon_containerized_deployment: false
