@@ -19,7 +19,7 @@
     - osd_auto_discovery
 
 - name: manually prepare bluestore osd disk(s)
-  command: ceph-disk prepare --bluestore --cluster "{{ cluster }}" "{{ item.2 }}"
+  command: ceph-disk prepare --bluestore --cluster "{{ cluster }}" "{{ item }}"
   with_items: "{{ legacy_devices }}"
   when:
     - bluestore
