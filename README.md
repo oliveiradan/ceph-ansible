@@ -54,6 +54,13 @@ incorrect configuration options appearing in ceph.conf.
 * We will no longer accept pull requests that modify the ceph.conf template unless it helps the deployment. For simple configuration tweaks
 please use the `ceph_conf_overrides` variable.
 
+### Networking
+
+You must define `monitor_interface` variable with the network interface name which will carry the IP address in the `public_network` subnet.
+`monitor_interface` must be defined at least in `group_vars/all.yml` but can be overrided in inventory host file if needed.
+You can specify for each monitor on which IP address it will bind to by specifying the `monitor_address` variable in the **inventory host file**.
+Preference will go to `monitor_address` if specified, otherwise it will take the first IP address found on the network interface specified in `monitor_interface`.
+
 ## Special notes
 
 If you are looking at deploying a Ceph version older than Jewel.
