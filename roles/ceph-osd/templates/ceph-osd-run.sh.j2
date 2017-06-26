@@ -1,22 +1,53 @@
 #!/bin/bash
 # {{ ansible_managed }}
 
-if [[ "$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}* | wc -l)" -gt 0 ]] ; then
+#############
+# VARIABLES #
+#############
+
+DISK_PATH=/dev/disk/by-partuuid/
+MAPPER=/dev/mapper
+
+
+#############
+# FUNCTIONS #
+#############
+
+function get_luks_part_uuid {
+  blkid -t TYPE=crypto_LUKS -o value -s PARTUUID "${@}"
+}
+
+function get_lockbox_part_uuid {
+  blkid -t PARTLABEL="ceph lockbox" -o value -s PARTUUID "${1}"
+}
+
+function is_dmcrypt {
+  [[ "$(get_luks_part_uuid /dev/${1}* | wc -l)" -gt 0 ]]
+}
+
+
+########
+# MAIN #
+########
+
+if is_dmcrypt "${1}"; then
   for part in /dev/${1}*; do
-    if [[ "$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID ${part} | wc -l)" -gt 0 ]]; then
-DEVICES="${DEVICES} --device=/dev/disk/by-partuuid/$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID ${part}) "
+    if [[ "$(get_luks_part_uuid ${part} | wc -l)" -gt 0 ]]; then
+DEVICES="${DEVICES} --device=$DISK_PATH/$(get_luks_part_uuid ${part}) "
     fi
   done
-  # we test if the dm exist, if it does we add it to --device list
-  # if not we don't add it, the first activation will fail
-  # however the dm will be created, on the second run it'll added to the device list
-  # the second run will succeed
-  blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}1
-  # make sure blkid returns 0 otherwise we will test /dev/mapper/ which always exists
-	if [[ -e /dev/mapper/$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}1) && "$?" -eq 0 ]]; then
-    DEVICES="${DEVICES} --device=/dev/disk/by-partuuid/$(blkid -t PARTLABEL="ceph lockbox" -o value -s PARTUUID /dev/${1}3) --device=/dev/${1}3 --device=/dev/mapper/control --device=/dev/mapper/$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}2) --device=/dev/mapper/$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}1)"
+
+  # We test if the dm exists, if it does we add it to --device list
+  # The first activation will fail because the encrypted device is not open yet.
+  # During the first activation, ceph-disk will open it and then the dm will be created.
+  # On the second run it'll be added to the device list, so the second run will succeed
+  get_luks_part_uuid /dev/${1}1
+
+  # Make sure blkid returns 0 otherwise we will test /dev/mapper/ which always exists
+  if [[ -e /dev/mapper/$(get_luks_part_uuid /dev/${1}1) ]] && [[ "$?" -eq 0 ]]; then
+    DEVICES="${DEVICES} --device=$DISK_PATH/$(get_lockbox_part_uuid /dev/${1}3) --device=/dev/${1}3 --device=$MAPPER/control --device=$MAPPER/$(get_luks_part_uuid /dev/${1}2) --device=$MAPPER/$(get_luks_part_uuid /dev/${1}1)"
   else
-    DEVICES="${DEVICES} --device=/dev/disk/by-partuuid/$(blkid -t PARTLABEL="ceph lockbox" -o value -s PARTUUID /dev/${1}3) --device=/dev/${1}3 --device=/dev/mapper/control --device=/dev/mapper/$(blkid -t TYPE=crypto_LUKS -o value -s PARTUUID /dev/${1}2)"
+    DEVICES="${DEVICES} --device=$DISK_PATH/$(get_lockbox_part_uuid /dev/${1}3) --device=/dev/${1}3 --device=$MAPPER/control --device=$MAPPER/$(get_luks_part_uuid /dev/${1}2)"
   fi
 fi
 
@@ -45,7 +76,7 @@ fi
   {% else -%}
   --device=/dev/${1}2 \
   {% endif -%}
-  --device=/dev/disk/by-partuuid/$(python -c "import uuid; f = open('/etc/machine-id', 'r').read(); print uuid.uuid5(uuid.NAMESPACE_DNS, f.strip() + '/dev/$1')") ${DEVICES} \
+  --device=$DISK_PATH/$(python -c "import uuid; f = open('/etc/machine-id', 'r').read(); print uuid.uuid5(uuid.NAMESPACE_DNS, f.strip() + '/dev/$1')") ${DEVICES} \
   -e CEPH_DAEMON=OSD_CEPH_DISK_ACTIVATE \
   -e OSD_DEVICE=/dev/${1} \
   {{ ceph_osd_docker_extra_env }} \
